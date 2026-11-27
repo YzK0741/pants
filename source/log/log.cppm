@@ -12,9 +12,9 @@ module;
 #include <string_view>
 #include <utility>
 
-export module utility:log;
+export module log;
 
-import :build;
+import base;
 
 
 export namespace utility {
@@ -39,8 +39,6 @@ enum class log_errc : std::uint8_t {
 [[nodiscard]] std::string_view to_string(log_errc error);
 
 std::expected<void, log_errc> set_local_target(std::string_view new_target);
-void set_local_name(std::string_view name);
-[[nodiscard]] std::string_view get_local_name();
 std::expected<void, log_errc> flush();
 std::expected<void, log_errc> flush_local();
 void set_global_level(log_level level);
@@ -57,7 +55,7 @@ namespace utility::detail {
 
 std::expected<void, log_errc> submit_message(
   log_level level,
-  std::string message,
+  std::string&& message,
   std::source_location location);
 
 template <typename... Args>

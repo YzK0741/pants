@@ -13,6 +13,7 @@ module;
 #include <cstdlib>
 #include <expected>
 #include <format>
+#include <memory>
 #include <mutex>
 #include <queue>
 #include <source_location>
@@ -21,21 +22,21 @@ module;
 #include <thread>
 #include <utility>
 
-module utility:log_detail;
+module log:core;
 
-import :build;
-import :log;
+import base;
+import log;
 
 namespace utility {
-  namespace
+  namespace detail
   {
 
-  [[nodiscard]] constexpr std::string_view file_basename(std::string_view path) noexcept {
+  [[nodiscard]] constexpr std::string_view file_basename(std::string_view path) noexcept {  // NOLINT(misc-use-internal-linkage)
     const auto separator = path.find_last_of("/\\");
     return separator == std::string_view::npos ? path : path.substr(separator + 1);
   }
 
-  [[nodiscard]] constexpr std::string_view to_string_view(log_level level) noexcept {
+  [[nodiscard]] constexpr std::string_view to_string_view(log_level level) noexcept {  // NOLINT(misc-use-internal-linkage)
     switch (level) {
       case log_level::debug:
         return "DEBUG";
@@ -52,9 +53,9 @@ namespace utility {
   }
 
 
-  struct log_record {
+  struct log_record {  // NOLINT(misc-use-internal-linkage)
     std::string message;
-    std::string_view name;
+    std::shared_ptr<const std::string> name;
     log_level level{log_level::info};
     std::source_location location{};
     std::chrono::system_clock::time_point timestamp{};
@@ -67,8 +68,9 @@ namespace utility {
       const auto file_name = file_basename(location.file_name());
       const auto line_number = location.line();
       const auto function_name = location.function_name();
+      const std::string_view name_view = name != nullptr ? std::string_view(*name) : std::string_view{};
 
-      if (name.empty()) {
+      if (name_view.empty()) {
         const auto result = std::format_to_n(
           buffer.data(), buffer.size(),
           "[{:%Y-%m-%d %H:%M:%S}][{}][{:x}][{}:{} {}] {}\n",
@@ -89,7 +91,7 @@ namespace utility {
       const auto result = std::format_to_n(
         buffer.data(), buffer.size(),
         "[{:%Y-%m-%d %H:%M:%S}][{}][{}][{:x}][{}:{} {}] {}\n",
-        timestamp_ms, level_name, name, thread_id, file_name, line_number, function_name, message);
+        timestamp_ms, level_name, name_view, thread_id, file_name, line_number, function_name, message);
       const auto needed = static_cast<std::size_t>(result.size);
       if (needed <= buffer.size()) {
         std::fwrite(buffer.data(), 1, needed, target);
@@ -98,19 +100,19 @@ namespace utility {
 
       const auto line = std::format(
         "[{:%Y-%m-%d %H:%M:%S}][{}][{}][{:x}][{}:{} {}] {}\n",
-        timestamp_ms, level_name, name, thread_id, file_name, line_number, function_name, message);
+        timestamp_ms, level_name, name_view, thread_id, file_name, line_number, function_name, message);
       std::fwrite(line.data(), 1, line.size(), target);
     }
   };
 
-  class log_writer {
+  class log_writer {  // NOLINT(misc-use-internal-linkage)
   public:
     static log_writer& instance() {
       static auto* writer = new log_writer;
       return *writer;
     }
 
-    [[nodiscard]] bool should_log(log_level level) const noexcept {
+    [[nodiscard]] bool should_log(log_level level) const noexcept { // NOLINT
       if (level == log_level::fatal) {
         return true;
       }
@@ -209,28 +211,16 @@ namespace utility {
   };
 
 
-  class log_sink {
-    std::FILE* log_target = stdout;
-    std::string log_name;
-    const std::uint64_t log_thread_id;
+  class local_log_info {  // NOLINT(misc-use-internal-linkage)
 
   public:
 
-    static log_sink& get_local_sink() {
-      thread_local log_sink local_sink;
-      return local_sink;
+    static local_log_info& get_local() {
+      thread_local local_log_info local;
+      return local;
     }
 
-    void set_name(std::string_view name) {
-      log_writer::instance().flush();
-      log_name.assign(name);
-    }
-
-    [[nodiscard]] std::string_view get_name() const noexcept {
-      return log_name;
-    }
-
-    std::expected<void, log_errc> change_target(std::string_view new_target) {
+    static std::expected<void, log_errc> change_target(std::string_view new_target) {
       const std::string path(new_target);
       std::FILE* const opened = std::fopen(path.c_str(), "ab");
 
@@ -238,8 +228,8 @@ namespace utility {
         return std::unexpected(log_errc::target_open_failed);
       }
 
-      std::FILE* const previous = log_target;
-      log_target = opened;
+      std::FILE* const previous = thread_info::get_local().target();
+      thread_info::get_local().set_target(opened);
 
       if (previous != stdout) {
         log_writer::instance().flush();
@@ -255,39 +245,40 @@ namespace utility {
       return {};
     }
 
-    explicit log_sink(std::string_view target_file = "")
-      : log_thread_id(static_cast<std::uint64_t>(std::hash<std::thread::id>{}(std::this_thread::get_id()))) {
+    explicit local_log_info(std::string_view target_file = "") {
       if (!target_file.empty()) {
         (void)change_target(target_file);  // NOLINT
       }
     }
 
-    ~log_sink() {
+    ~local_log_info() {
+      std::FILE* const target = thread_info::get_local().target();
       (void)log_writer::instance().flush();
-      if (log_target != stdout) {
-        std::fclose(log_target);
+      if (target != stdout) {
+        std::fclose(target);
       } else {
         std::fflush(stdout);
       }
     }
 
-    log_sink(const log_sink&) = delete;
-    log_sink& operator=(const log_sink&) = delete;
+    local_log_info(const local_log_info&) = delete;
+    local_log_info& operator=(const local_log_info&) = delete;
 
-    [[nodiscard]] std::expected<void, log_errc> add_message(log_level level, std::string message, std::source_location location) const {
+    [[nodiscard]] static std::expected<void, log_errc> add_message(log_level level, std::string&& message, std::source_location location) {
       return log_writer::instance().submit(
-        log_target,
+        thread_info::get_local().target(),
         log_record{.message = std::move(message),
-          .name = log_name,
+          .name = thread_info::get_local().name_holder(),
           .level = level,
           .location = location,
           .timestamp = std::chrono::system_clock::now(),
-          .thread_id = log_thread_id});
+          .thread_id = thread_info::get_local().id()});
     }
 
-    [[nodiscard]] std::expected<void, log_errc> flush() const {
-      const int flush_result = std::fflush(log_target);
-      if (std::ferror(log_target) != 0) {
+    [[nodiscard]] static std::expected<void, log_errc> flush() {
+      std::FILE* const target = thread_info::get_local().target();
+      const int flush_result = std::fflush(target);
+      if (std::ferror(target) != 0) {
         return std::unexpected(log_errc::write_failed);
       }
       if (flush_result != 0) {
@@ -307,15 +298,15 @@ bool should_log(log_level level) noexcept {
 
 std::expected<void, log_errc> submit_message(
   log_level level,
-  std::string message,
+  std::string&& message,
   std::source_location location) {
-  return log_sink::get_local_sink().add_message(level, std::move(message), location);
+  return local_log_info::get_local().add_message(level, std::move(message), location);
 }
 
 } // namespace detail
 
 std::string_view to_string(log_level level) {
-  return to_string_view(level);
+  return detail::to_string_view(level);
 }
 
 std::string_view to_string(log_errc error) {
@@ -335,40 +326,32 @@ std::string_view to_string(log_errc error) {
 }
 
 std::expected<void, log_errc> set_local_target(std::string_view new_target) {
-  return log_sink::get_local_sink().change_target(new_target);
-}
-
-void set_local_name(std::string_view name) {
-  log_sink::get_local_sink().set_name(name);
-}
-
-[[nodiscard]] std::string_view get_local_name() {
-  return log_sink::get_local_sink().get_name();
+  return detail::local_log_info::get_local().change_target(new_target);
 }
 
 std::expected<void, log_errc> flush() {
-  log_writer::instance().flush();
+  detail::log_writer::instance().flush();
   return {};
 }
 
 std::expected<void, log_errc> flush_local() {
-  return log_sink::get_local_sink().flush();
+  return detail::local_log_info::get_local().flush();
 }
 
 void set_global_level(log_level level) {
-  log_writer::instance().set_level(level);
+  detail::log_writer::instance().set_level(level);
 }
 
 [[nodiscard]] log_level get_global_level() {
-  return log_writer::instance().get_level();
+  return detail::log_writer::instance().get_level();
 }
 
 [[nodiscard]] bool is_enabled(log_level level) {
-  return log_writer::instance().should_log(level);
+  return detail::log_writer::instance().should_log(level);
 }
 
 [[nodiscard]] std::size_t dropped_count() {
-  return log_writer::instance().dropped_count();
+  return detail::log_writer::instance().dropped_count();
 }
 
 } // namespace utility
