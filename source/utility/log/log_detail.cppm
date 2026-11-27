@@ -210,7 +210,6 @@ namespace utility {
       return local_sink;
     }
 
-    // 只在初始化阶段调用；先把队列排空，避免已入队的记录还引用旧字符串
     void set_name(std::string_view name) {
       log_writer::instance().flush();
       log_name.assign(name);
@@ -314,7 +313,6 @@ void set_name(std::string_view name) {
   return log_sink::get_local_sink().get_name();
 }
 
-// 等待队列里所有记录写出，并把本线程目标文件的缓冲刷进操作系统
 std::expected<void, log_error> flush() {
   log_writer::instance().flush();
   return log_sink::get_local_sink().flush();

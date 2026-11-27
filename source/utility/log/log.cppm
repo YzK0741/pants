@@ -26,11 +26,11 @@ enum class log_level : std::uint8_t {
 };
 
 enum class log_error : std::uint8_t {
-  queue_full,           // 队列达到上限，新日志被丢弃
-  fatal_occurred,       // 已触发 fatal 流程，队列关闭，进程即将 abort
-  target_open_failed,   // set_target 打开日志文件失败
-  write_failed,         // 写目标失败
-  flush_failed,         // 刷新目标失败
+  queue_full,
+  fatal_occurred,
+  target_open_failed,
+  write_failed,
+  flush_failed,
 };
 
 std::expected<void, log_error> set_target(std::string_view new_target);
@@ -40,7 +40,7 @@ std::expected<void, log_error> flush();
 void set_level(log_level level);
 [[nodiscard]] log_level get_level();
 
-} // namespace utility
+}
 
 
 namespace utility::detail {
@@ -62,12 +62,11 @@ std::expected<void, log_error> submit_log(
     return {};
   }
 
-  // 格式串在编译期校验，标准类型参数不会在运行时产生 format_error
   return submit_message(
       level, std::format(message, std::forward<Args>(args)...), location);
 }
 
-} // namespace utility::detail
+} // namespace detail
 
 export namespace utility {
 
