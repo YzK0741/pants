@@ -3,6 +3,7 @@
 //
 module;
 
+#include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <format>
@@ -22,10 +23,11 @@ enum class log_level : std::uint8_t {
   debug,
   info,
   warning,
+  error,
   fatal,
 };
 
-enum class log_error : std::uint8_t {
+enum class log_errc : std::uint8_t {
   queue_full,
   fatal_occurred,
   target_open_failed,
@@ -33,12 +35,18 @@ enum class log_error : std::uint8_t {
   flush_failed,
 };
 
-std::expected<void, log_error> set_target(std::string_view new_target);
-void set_name(std::string_view name);
-[[nodiscard]] std::string_view get_name();
-std::expected<void, log_error> flush();
-void set_level(log_level level);
-[[nodiscard]] log_level get_level();
+[[nodiscard]] std::string_view to_string(log_level level);
+[[nodiscard]] std::string_view to_string(log_errc error);
+
+std::expected<void, log_errc> set_local_target(std::string_view new_target);
+void set_local_name(std::string_view name);
+[[nodiscard]] std::string_view get_local_name();
+std::expected<void, log_errc> flush();
+std::expected<void, log_errc> flush_local();
+void set_global_level(log_level level);
+[[nodiscard]] log_level get_global_level();
+[[nodiscard]] bool is_enabled(log_level level);
+[[nodiscard]] std::size_t dropped_count();
 
 }
 
@@ -47,13 +55,13 @@ namespace utility::detail {
 
 [[nodiscard]] bool should_log(log_level level) noexcept;
 
-std::expected<void, log_error> submit_message(
+std::expected<void, log_errc> submit_message(
   log_level level,
   std::string message,
   std::source_location location);
 
 template <typename... Args>
-std::expected<void, log_error> submit_log(
+std::expected<void, log_errc> submit_log(
   log_level level,
   std::source_location location,
   std::format_string<Args...> message,
@@ -71,7 +79,7 @@ std::expected<void, log_error> submit_log(
 export namespace utility {
 
 template <typename... Args>
-std::expected<void, log_error> log_debug(
+std::expected<void, log_errc> log_debug(
   [[maybe_unused]] std::source_location location,
   [[maybe_unused]] std::format_string<Args...> message,
   [[maybe_unused]] Args&&... args) {
@@ -82,7 +90,7 @@ std::expected<void, log_error> log_debug(
 }
 
 template <typename... Args>
-std::expected<void, log_error> log_info(
+std::expected<void, log_errc> log_info(
   std::source_location location,
   std::format_string<Args...> message,
   Args&&... args) {
@@ -90,7 +98,7 @@ std::expected<void, log_error> log_info(
 }
 
 template <typename... Args>
-std::expected<void, log_error> log_warning(
+std::expected<void, log_errc> log_warning(
   std::source_location location,
   std::format_string<Args...> message,
   Args&&... args) {
@@ -98,7 +106,15 @@ std::expected<void, log_error> log_warning(
 }
 
 template <typename... Args>
-std::expected<void, log_error> log_fatal(
+std::expected<void, log_errc> log_error(
+  std::source_location location,
+  std::format_string<Args...> message,
+  Args&&... args) {
+  return detail::submit_log(log_level::error, location, message, std::forward<Args>(args)...);
+}
+
+template <typename... Args>
+std::expected<void, log_errc> log_fatal(
   std::source_location location,
   std::format_string<Args...> message,
   Args&&... args) {
@@ -107,7 +123,7 @@ std::expected<void, log_error> log_fatal(
   if (!result) {
     return result;
   }
-  return std::unexpected(log_error::fatal_occurred);
+  return std::unexpected(log_errc::fatal_occurred);
 }
 
 } // namespace utility
