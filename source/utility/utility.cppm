@@ -4,4 +4,5 @@
 module;
 
 export module utility;
+export import :build;
 export import :log;

@@ -12,8 +12,10 @@ add_library(utility)
 target_sources(utility PUBLIC
         FILE_SET CXX_MODULES
         FILES
-        source/utility/utility.cppm
+        source/utility/build.cppm
         source/utility/log/log.cppm
+        source/utility/log/log_detail.cppm
+        source/utility/utility.cppm
 )
 
 target_link_libraries(pants PUBLIC
