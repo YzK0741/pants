@@ -200,4 +200,20 @@ namespace pants
         std::lock_guard lock(registry().mutex);
         return registry().variables.size();
     }
+
+    config_var_base::config_var_base(std::string name, std::string description)
+      : var_name(std::move(name))
+      , var_description(std::move(description))
+    {
+    }
+
+    const std::string& config_var_base::name() const noexcept
+    {
+        return var_name;
+    }
+
+    const std::string& config_var_base::description() const noexcept
+    {
+        return var_description;
+    }
 }

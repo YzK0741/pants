@@ -130,7 +130,7 @@ namespace pants
     void iomanager::tickle()
     {
         constexpr std::uint64_t one = 1;
-        ssize_t result = 0;
+        ssize_t result;
         do
         {
             result = ::write(wake_fd, &one, sizeof(one));
@@ -166,7 +166,7 @@ namespace pants
         std::array<epoll_event, max_epoll_events> events{};
         for (;;)
         {
-            int ready_count = 0;
+            int ready_count;
             do
             {
                 std::uint64_t next_timeout = invalid_timer;
@@ -319,7 +319,7 @@ namespace pants
             return false;
         }
 
-        event_context discarded;
+
         {
             std::lock_guard lock(context->mutex);
             const std::uint32_t mask = static_cast<std::uint32_t>(which);
@@ -331,7 +331,7 @@ namespace pants
             {
                 return false;
             }
-            discarded = take_event(*context, which);
+            (void)take_event(*context, which);
         }
         pending_events.fetch_sub(1, std::memory_order_acq_rel);
         return true;
@@ -524,5 +524,15 @@ namespace pants
         pending_events.fetch_sub(triggered, std::memory_order_acq_rel);
         dispatch(std::move(read_entry));
         dispatch(std::move(write_entry));
+    }
+
+    iomanager::fd_context::fd_context(int descriptor)
+      : fd(descriptor)
+    {
+    }
+
+    iomanager::event_context& iomanager::fd_context::context(event which) noexcept
+    {
+        return which == event::read ? read : write;
     }
 }

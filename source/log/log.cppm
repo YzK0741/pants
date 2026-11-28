@@ -84,7 +84,7 @@ std::expected<void, log_errc> log_debug(
   if constexpr (debug_enabled) {
     return detail::submit_log(log_level::debug, location, message, std::forward<arg_types>(args)...);
   }
-  return {};
+  return {}; // NOLINT
 }
 
 template <typename... arg_types>

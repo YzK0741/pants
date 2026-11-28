@@ -8,6 +8,7 @@ module;
 #include <list>
 #include <mutex>
 #include <thread>
+#include <memory>
 #include <vector>
 #include <chrono>
 #include <cstddef>
@@ -107,7 +108,7 @@ namespace pants
 
     void scheduler::add_task(fiber::shared task_fiber, thread_id id)
     {
-        bool need_tickle = false;
+        bool need_tickle;
         {
             std::lock_guard lock(mutex);
             need_tickle = schedule_no_lock(task{std::move(task_fiber), id});
@@ -120,7 +121,7 @@ namespace pants
 
     void scheduler::add_task(callback entry, thread_id id)
     {
-        bool need_tickle = false;
+        bool need_tickle;
         {
             std::lock_guard lock(mutex);
             need_tickle = schedule_no_lock(task{std::move(entry), id});
@@ -415,7 +416,7 @@ namespace pants
                                "a caller scheduler must be stopped by its construction thread");
         }
 
-        std::size_t wake_count = 0;
+        std::size_t wake_count;
         {
             std::lock_guard lock(mutex);
             auto_stop.store(true, std::memory_order_release);
@@ -469,10 +470,9 @@ namespace pants
             registered_workers = 0;
             if (use_caller_thread)
             {
-                thread_ids.erase(std::remove_if(thread_ids.begin(), thread_ids.end(), [this](thread_id id) {
-                                     return id != root_thread_id;
-                                 }),
-                                 thread_ids.end());
+                std::erase_if(thread_ids, [this](thread_id id) {
+                    return id != root_thread_id;
+                });
             }
             else
             {
@@ -544,5 +544,15 @@ namespace pants
         {
             caller->switch_to();
         }
+    }
+
+    const std::string& scheduler::name() const noexcept
+    {
+        return scheduler_name;
+    }
+
+    bool scheduler::has_idle_threads() const noexcept
+    {
+        return idle_count.load(std::memory_order_acquire) != 0;
     }
 }

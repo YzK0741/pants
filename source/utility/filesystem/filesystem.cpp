@@ -8,7 +8,6 @@ module;
 #include <csignal>
 #include <charconv>
 #include <cstddef>
-#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <source_location>
@@ -43,7 +42,7 @@ namespace pants
             return;
         }
 
-        const auto options = std::filesystem::directory_options::skip_permission_denied;
+        constexpr auto options = std::filesystem::directory_options::skip_permission_denied;
         for (auto iterator = std::filesystem::recursive_directory_iterator(root, options, error);
              iterator != std::filesystem::recursive_directory_iterator(); iterator.increment(error))
         {

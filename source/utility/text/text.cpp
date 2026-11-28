@@ -3,8 +3,6 @@
 //
 module;
 
-#include <algorithm>
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <source_location>
@@ -75,8 +73,8 @@ namespace pants
                 return true;
             }
 
-            std::uint32_t minimum_code_point = 0;
-            std::size_t continuation_count = 0;
+            std::uint32_t minimum_code_point;
+            std::size_t continuation_count;
             if (first >= 0xC2 && first <= 0xDF)
             {
                 code_point = first & 0x1FU;

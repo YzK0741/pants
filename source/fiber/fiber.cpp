@@ -5,11 +5,8 @@ module;
 
 #include <atomic>
 #include <cstddef>
-#include <cstdio>
 #include <cstring>
-#include <cstdlib>
 #include <thread>
-#include <functional>
 #include <memory>
 #include <mutex>
 #include <source_location>
@@ -194,8 +191,7 @@ namespace pants
             strategy->set_running(this, false);
         }
 
-        const bool terminated = status.load(std::memory_order_acquire) == state::terminated;
-        if (terminated)
+        if (status.load(std::memory_order_acquire) == state::terminated)
         {
             if (strategy != nullptr && !strategy->validate(this))
             {

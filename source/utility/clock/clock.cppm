@@ -4,7 +4,6 @@
 module;
 
 #include <chrono>
-#include <cstddef>
 #include <string_view>
 
 export module utility.clock;

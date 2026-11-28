@@ -137,7 +137,9 @@ target_sources(log PUBLIC
         FILE_SET CXX_MODULES
         FILES
         source/log/log.cppm
-        source/log/log_core.cppm
+)
+target_sources(log PRIVATE
+        source/log/log_core.cpp
 )
 target_link_libraries(log PUBLIC base PRIVATE utility_clock)
 

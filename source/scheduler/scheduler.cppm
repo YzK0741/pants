@@ -47,10 +47,7 @@ export namespace pants
         scheduler(scheduler&&) = delete;
         scheduler& operator=(scheduler&&) = delete;
 
-        [[nodiscard]] const std::string& name() const noexcept
-        {
-            return scheduler_name;
-        }
+        [[nodiscard]] const std::string& name() const noexcept;
 
         [[nodiscard]] static scheduler* get_current() noexcept;
         [[nodiscard]] static fiber* get_main_fiber() noexcept;
@@ -101,10 +98,7 @@ export namespace pants
         void run();
         void set_this() noexcept;
 
-        [[nodiscard]] bool has_idle_threads() const noexcept
-        {
-            return idle_count.load(std::memory_order_acquire) != 0;
-        }
+        [[nodiscard]] bool has_idle_threads() const noexcept;
 
         private:
 
@@ -112,7 +106,7 @@ export namespace pants
 
         struct task
         {
-            work entry;
+            work entry{};
             thread_id id{any_thread};
 
             task() = default;
@@ -139,7 +133,7 @@ export namespace pants
                 return std::get_if<callback>(&entry);
             }
 
-            [[nodiscard]] bool valid() const noexcept
+            [[nodiscard]] bool valid() const noexcept  // NOLINT
             {
                 if (const auto* value = std::get_if<fiber::shared>(&entry))
                 {

@@ -58,15 +58,9 @@ export namespace pants
         config_var_base(const config_var_base&) = delete;
         config_var_base& operator=(const config_var_base&) = delete;
 
-        [[nodiscard]] const std::string& name() const noexcept
-        {
-            return var_name;
-        }
+        [[nodiscard]] const std::string& name() const noexcept;
 
-        [[nodiscard]] const std::string& description() const noexcept
-        {
-            return var_description;
-        }
+        [[nodiscard]] const std::string& description() const noexcept;
 
         [[nodiscard]] virtual std::string_view type_name() const noexcept = 0;
         virtual bool set_from_node(const toml::node& node) = 0;
@@ -76,11 +70,7 @@ export namespace pants
 
         protected:
 
-        config_var_base(std::string name, std::string description)
-          : var_name(std::move(name))
-          , var_description(std::move(description))
-        {
-        }
+        config_var_base(std::string name, std::string description);
 
         private:
 

@@ -3,16 +3,13 @@
 //
 module;
 
-#include <array>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <mutex>
 #include <shared_mutex>
 #include <unordered_map>
-#include <utility>
 #include <variant>
 
 #include <sys/epoll.h>
@@ -70,7 +67,7 @@ export namespace pants
         struct event_context
         {
             scheduler* owner{nullptr};
-            std::variant<std::monostate, fiber::shared, callback> action;
+            std::variant<std::monostate, fiber::shared, callback> action{};
 
             [[nodiscard]] bool valid() const noexcept;
             void reset() noexcept;
@@ -78,10 +75,7 @@ export namespace pants
 
         struct fd_context
         {
-            explicit fd_context(int descriptor)
-              : fd(descriptor)
-            {
-            }
+            explicit fd_context(int descriptor);
 
             int fd{-1};
             std::mutex mutex;
@@ -89,16 +83,13 @@ export namespace pants
             event_context write;
             std::uint32_t events{0};
 
-            [[nodiscard]] event_context& context(event which) noexcept
-            {
-                return which == event::read ? read : write;
-            }
+            [[nodiscard]] event_context& context(event which) noexcept;
         };
 
         [[nodiscard]] fd_context* find_context(int fd) const;
         [[nodiscard]] fd_context* get_or_create_context(int fd);
         bool update_interest(fd_context& context, std::uint32_t new_events);
-        [[nodiscard]] event_context take_event(fd_context& context, event which);
+        [[nodiscard]] static event_context take_event(fd_context& context, event which);
         void dispatch(event_context entry);
         void process_ready(const epoll_event& ready);
         void cancel_events();

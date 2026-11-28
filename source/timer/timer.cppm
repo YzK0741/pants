@@ -67,7 +67,7 @@ namespace pants
 
         duration interval{duration::zero()};
         clock::time_point next{};
-        callback entry;
+        callback entry{};
         std::atomic<timer_manager*> owner{nullptr};
         bool recurring{false};
     };

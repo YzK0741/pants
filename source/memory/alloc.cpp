@@ -4,7 +4,6 @@
 
 #include <cstddef>
 #include <cstdio>
-#include <cstdlib>
 #include <new>
 
 #include <mimalloc.h>

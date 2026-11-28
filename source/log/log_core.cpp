@@ -22,10 +22,9 @@ module;
 #include <thread>
 #include <utility>
 
-module log:core;
+module log;
 
 import base;
-import log;
 import utility.clock;
 
 namespace utility {

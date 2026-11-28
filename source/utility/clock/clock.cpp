@@ -29,7 +29,7 @@ namespace utility
                 return *state;
             }
 
-            [[nodiscard]] std::string_view text(std::chrono::system_clock::time_point when) noexcept
+            [[nodiscard]] std::string_view text(std::chrono::system_clock::time_point when) const noexcept
             {
                 const auto whole = std::chrono::time_point_cast<std::chrono::seconds>(when);
                 const auto second = whole.time_since_epoch().count();
