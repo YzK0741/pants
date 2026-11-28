@@ -18,6 +18,7 @@ module;
 module scheduler;
 
 import fiber;
+import fiber.stack;
 import base;
 import log;
 
@@ -54,7 +55,9 @@ namespace pants
             --thread_count;
             root_thread_id = utility::thread_info::get_local().id();
             thread_ids.push_back(root_thread_id);
-            root_fiber = std::make_shared<fiber>([this] { run(); });
+            fiber::option root_options{};
+            root_options.stack_mode = stack_mode::dedicated;
+            root_fiber = std::make_shared<fiber>([this] { run(); }, root_options);
             current_scheduler = this;
             current_scheduler_fiber = root_fiber.get();
             if (!scheduler_name.empty())
@@ -277,7 +280,9 @@ namespace pants
             cv.notify_all();
         }
 
-        auto idle_fiber = std::make_shared<fiber>([this] { idle(); });
+        fiber::option idle_options{};
+        idle_options.stack_mode = stack_mode::dedicated;
+        auto idle_fiber = std::make_shared<fiber>([this] { idle(); }, idle_options);
         fiber::shared callback_fiber;
 
         for (;;)
@@ -339,7 +344,9 @@ namespace pants
                 }
                 else
                 {
-                    callback_fiber = std::make_shared<fiber>(std::move(*entry));
+                    fiber::option callback_options{};
+                    callback_options.stack_mode = stack_mode::dedicated;
+                    callback_fiber = std::make_shared<fiber>(std::move(*entry), callback_options);
                 }
                 running = callback_fiber;
             }

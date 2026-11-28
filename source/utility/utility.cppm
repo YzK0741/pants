@@ -4,6 +4,7 @@
 export module utility;
 
 export import base;
+export import utility.clock;
 export import log;
 export import utility.text;
 export import utility.filesystem;

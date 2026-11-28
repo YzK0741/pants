@@ -45,10 +45,13 @@ namespace pants
         using readv_fun = ssize_t (*)(int, const struct iovec*, int);
         using recv_fun = ssize_t (*)(int, void*, std::size_t, int);
         using recvfrom_fun = ssize_t (*)(int, void*, std::size_t, int, struct sockaddr*, socklen_t*);
+        using recvmsg_fun = ssize_t (*)(int, struct msghdr*, int);
+        using recvmmsg_fun = int (*)(int, struct mmsghdr*, unsigned int, int, struct timespec*);
         using write_fun = ssize_t (*)(int, const void*, std::size_t);
         using writev_fun = ssize_t (*)(int, const struct iovec*, int);
         using send_fun = ssize_t (*)(int, const void*, std::size_t, int);
         using sendto_fun = ssize_t (*)(int, const void*, std::size_t, int, const struct sockaddr*, socklen_t);
+        using sendmsg_fun = ssize_t (*)(int, const struct msghdr*, int);
         using close_fun = int (*)(int);
         using fcntl_fun = int (*)(int, int, ...);
         using ioctl_fun = int (*)(int, unsigned long, ...);
@@ -66,10 +69,13 @@ namespace pants
         readv_fun readv_f = nullptr;
         recv_fun recv_f = nullptr;
         recvfrom_fun recvfrom_f = nullptr;
+        recvmsg_fun recvmsg_f = nullptr;
+        recvmmsg_fun recvmmsg_f = nullptr;
         write_fun write_f = nullptr;
         writev_fun writev_f = nullptr;
         send_fun send_f = nullptr;
         sendto_fun sendto_f = nullptr;
+        sendmsg_fun sendmsg_f = nullptr;
         close_fun close_f = nullptr;
         fcntl_fun fcntl_f = nullptr;
         ioctl_fun ioctl_f = nullptr;
@@ -98,10 +104,13 @@ namespace pants
             resolve(readv_f, "readv");
             resolve(recv_f, "recv");
             resolve(recvfrom_f, "recvfrom");
+            resolve(recvmsg_f, "recvmsg");
+            resolve(recvmmsg_f, "recvmmsg");
             resolve(write_f, "write");
             resolve(writev_f, "writev");
             resolve(send_f, "send");
             resolve(sendto_f, "sendto");
+            resolve(sendmsg_f, "sendmsg");
             resolve(close_f, "close");
             resolve(fcntl_f, "fcntl");
             resolve(ioctl_f, "ioctl");
@@ -289,6 +298,64 @@ extern "C"
         return pants::do_io(fd, pants::iomanager::event::read,
                             pants::timeout_of(context, SO_RCVTIMEO),
                             [&] { return pants::recvfrom_f(fd, buffer, length, flags, address, address_length); });
+    }
+
+    ssize_t recvmsg(int fd, struct msghdr* message, int flags)
+    {
+        pants::resolve(pants::recvmsg_f, "recvmsg");
+        const pants::fd_ctx::shared context = pants::hook_context(fd);
+        if (!context)
+        {
+            return pants::recvmsg_f(fd, message, flags);
+        }
+        return pants::do_io(fd, pants::iomanager::event::read,
+                            pants::timeout_of(context, SO_RCVTIMEO),
+                            [&] { return pants::recvmsg_f(fd, message, flags); });
+    }
+
+    int recvmmsg(int fd, struct mmsghdr* messages, unsigned int count, int flags, struct timespec* timeout)
+    {
+        pants::resolve(pants::recvmmsg_f, "recvmmsg");
+        const pants::fd_ctx::shared context = pants::hook_context(fd);
+        if (!context)
+        {
+            return pants::recvmmsg_f(fd, messages, count, flags, timeout);
+        }
+
+        for (;;)
+        {
+            const int received = pants::recvmmsg_f(fd, messages, count, flags, timeout);
+            if (received >= 0)
+            {
+                return received;
+            }
+            if (errno == EINTR)
+            {
+                continue;
+            }
+            if (errno != EAGAIN && errno != EWOULDBLOCK)
+            {
+                return -1;
+            }
+            if (!pants::wait_ready(fd, pants::iomanager::event::read,
+                                   pants::timeout_of(context, SO_RCVTIMEO)))
+            {
+                return -1;
+            }
+        }
+    }
+
+    ssize_t sendmsg(int fd, const struct msghdr* message, int flags)
+    {
+        pants::resolve(pants::sendmsg_f, "sendmsg");
+        const pants::fd_ctx::shared context = pants::hook_context(fd);
+        if (!context)
+        {
+            return pants::sendmsg_f(fd, message, flags);
+        }
+        return pants::do_io(fd, pants::iomanager::event::write,
+                            pants::timeout_of(context, SO_SNDTIMEO),
+                            [&] { return pants::sendmsg_f(fd, message, flags); });
     }
 
     ssize_t send(int fd, const void* buffer, std::size_t length, int flags)
@@ -531,6 +598,47 @@ extern "C"
         }
         pants::fiber::yield_to_hold();
         (void)timer->cancel();
+        return 0;
+    }
+
+    int connect_with_timeout(int fd, const struct sockaddr* address, socklen_t address_length,
+                             std::uint64_t timeout_ms)
+    {
+        pants::resolve(pants::connect_f, "connect");
+        pants::resolve(pants::getsockopt_f, "getsockopt");
+
+        const pants::fd_ctx::shared context = pants::fd_manager::instance().get(fd, false);
+        if (!context || !context->is_init() || !context->is_system_non_block())
+        {
+            return pants::connect_f(fd, address, address_length);
+        }
+
+        const int result = pants::connect_f(fd, address, address_length);
+        if (result == 0)
+        {
+            return 0;
+        }
+        if (errno != EINPROGRESS)
+        {
+            return result;
+        }
+        if (!pants::wait_ready(fd, pants::iomanager::event::write, timeout_ms))
+        {
+            errno = ETIMEDOUT;
+            return -1;
+        }
+
+        int error = 0;
+        socklen_t error_length = sizeof(error);
+        if (pants::getsockopt_f(fd, SOL_SOCKET, SO_ERROR, &error, &error_length) != 0)
+        {
+            return -1;
+        }
+        if (error != 0)
+        {
+            errno = error;
+            return -1;
+        }
         return 0;
     }
 

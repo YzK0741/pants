@@ -28,10 +28,10 @@ int main() {
 
   check(worker->get_state() == pants::fiber::state::init, "new fiber should be init");
   check(worker->id() != 0, "fiber id should be non-zero");
-  check(worker->stack_size() > 0, "stack size should be non-zero");
   check(pants::fiber::fiber_count() == before + 1, "fiber count should grow");
 
   const auto first = worker->resume();
+  check(worker->stack_size() > 0, "stack size should be non-zero after first resume");
   check(first == pants::fiber::state::ready, "first resume should report ready");
   check(steps == 1, "callback should have run until yield");
   check(worker->get_state() == pants::fiber::state::ready, "fiber should be ready after yield");

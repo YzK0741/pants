@@ -5,6 +5,10 @@ module;
 
 #include <atomic>
 #include <cstddef>
+#include <cstdio>
+#include <cstring>
+#include <cstdlib>
+#include <thread>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -19,6 +23,7 @@ module;
 
 module fiber;
 
+import fiber.stack;
 import log;
 
 namespace pants
@@ -71,12 +76,21 @@ namespace pants
         {
             std::terminate();
         }
-        if (stack_base != nullptr)
+
+        bool expected_exchange = false;
+        while (!stack_exchanging.compare_exchange_weak(expected_exchange, true, std::memory_order_acq_rel))
         {
-            (void)::munmap(stack_base, stack_bytes);
-            stack_base = nullptr;
-            stack_bytes = 0;
+            expected_exchange = false;
+            std::this_thread::yield();
         }
+
+        if (strategy != nullptr && !strategy->validate(this))
+        {
+            utility::log_error(std::source_location::current(), "fiber: stack overflow detected on destroyed fiber {}", ident);
+        }
+        release_stack();
+        saved_stack.clear();
+        saved_bytes = 0;
         live_fiber_count.fetch_sub(1, std::memory_order_relaxed);
     }
 
@@ -88,45 +102,21 @@ namespace pants
             return false;
         }
 
-        const long page_value = ::sysconf(_SC_PAGESIZE);
-        const std::size_t page = page_value > 0 ? static_cast<std::size_t>(page_value) : 4096U;
-        if (options.stack_size < 16 * 1024)
+        bool expected_exchange = false;
+        while (!stack_exchanging.compare_exchange_weak(expected_exchange, true, std::memory_order_acq_rel))
         {
-            utility::log_fatal(std::source_location::current(), "fiber: stack size is too small");
-            return false;
+            expected_exchange = false;
+            std::this_thread::yield();
         }
 
-        const std::size_t guard_bytes = options.guard_page ? page : 0;
-        const std::size_t usable = ((options.stack_size + page - 1) / page) * page;
-        const std::size_t total = usable + guard_bytes;
-
-        void* const base = ::mmap(nullptr, total, PROT_READ | PROT_WRITE,
-                                  MAP_PRIVATE | MAP_ANONYMOUS | MAP_STACK, -1, 0);
-        if (base == MAP_FAILED)
-        {
-            utility::log_fatal(std::source_location::current(), "fiber: failed to map stack");
-            return false;
-        }
-        if (guard_bytes != 0)
-        {
-            (void)::mprotect(base, guard_bytes, PROT_NONE);
-        }
-
-        void* const stack_top = static_cast<char*>(base) + total;
-        void* const new_context = make_fcontext(stack_top, usable, &fiber::entry);
-        if (new_context == nullptr)
-        {
-            (void)::munmap(base, total);
-            utility::log_fatal(std::source_location::current(), "fiber: failed to create context");
-            return false;
-        }
-
-        if (stack_base != nullptr)
-        {
-            (void)::munmap(stack_base, stack_bytes);
-        }
-        stack_base = base;
-        stack_bytes = total;
+        release_stack();
+        fiber_stack_manager& stack_manager = fiber_stack_manager::instance();
+        strategy = &stack_manager.strategy_for(options.stack_mode);
+        strategy->set_evict_callbacks(&fiber::evict_trampoline, &fiber::begin_exchange_trampoline,
+                                      &fiber::end_exchange_trampoline);
+        context = nullptr;
+        saved_stack.clear();
+        saved_bytes = 0;
 
         {
             std::lock_guard lock(error_mutex);
@@ -135,11 +125,11 @@ namespace pants
 
         this->func = std::move(func);
         caller = nullptr;
-        context = new_context;
         reason.store(wait_reason::none, std::memory_order_relaxed);
         parked.store(true, std::memory_order_relaxed);
         suspend_status.store(state::init, std::memory_order_relaxed);
         status.store(state::init, std::memory_order_release);
+        stack_exchanging.store(false, std::memory_order_release);
         return true;
     }
     fiber::state fiber::resume()
@@ -172,9 +162,17 @@ namespace pants
             parked.wait(false, std::memory_order_acquire);
         }
 
-        if (!context)
+        bool expected_exchange = false;
+        while (!stack_exchanging.compare_exchange_weak(expected_exchange, true, std::memory_order_acq_rel))
         {
-            save_logic_error("fiber has no resumable context");
+            expected_exchange = false;
+            std::this_thread::yield();
+        }
+
+        if (!prepare_stack())
+        {
+            save_logic_error("fiber has no resumable stack");
+            stack_exchanging.store(false, std::memory_order_release);
             suspend_status.store(state::error, std::memory_order_relaxed);
             status.store(state::error, std::memory_order_release);
             return state::error;
@@ -182,8 +180,36 @@ namespace pants
 
         parked.store(false, std::memory_order_relaxed);
         current_fiber_guard guard(this);
+
+        if (strategy != nullptr)
+        {
+            strategy->set_running(this, true);
+        }
+
         const fcontext_transfer_t transferred = jump_fcontext(context, this);
         context = transferred.fctx;
+
+        if (strategy != nullptr)
+        {
+            strategy->set_running(this, false);
+        }
+
+        const bool terminated = status.load(std::memory_order_acquire) == state::terminated;
+        if (terminated)
+        {
+            if (strategy != nullptr && !strategy->validate(this))
+            {
+                utility::log_error(std::source_location::current(), "fiber: stack overflow detected on fiber {}", ident);
+            }
+            release_stack();
+        }
+        else if (strategy != nullptr && strategy->save_on_suspend())
+        {
+            save_stack();
+            release_stack();
+        }
+
+        stack_exchanging.store(false, std::memory_order_release);
 
         const state suspended = suspend_status.load(std::memory_order_acquire);
         parked.store(true, std::memory_order_release);
@@ -205,9 +231,11 @@ namespace pants
         if (!caller)
         {
             save_logic_error("fiber has no caller context to yield to");
+            suspend_status.store(state::error, std::memory_order_relaxed);
             status.store(state::error, std::memory_order_release);
             return;
         }
+
         const fcontext_transfer_t transferred = jump_fcontext(caller, nullptr);
         caller = transferred.fctx;
     }
@@ -258,12 +286,7 @@ namespace pants
 
     std::size_t fiber::stack_size() const noexcept
     {
-        return options.stack_size;
-    }
-
-    bool fiber::guard_page() const noexcept
-    {
-        return options.guard_page;
+        return stack.size;
     }
 
     fiber* fiber::current() noexcept
@@ -316,6 +339,101 @@ namespace pants
         self->run();
         jump_fcontext(self->caller, nullptr);
         __builtin_unreachable();
+    }
+
+    bool fiber::prepare_stack()
+    {
+        if (strategy == nullptr)
+        {
+            strategy = &fiber_stack_manager::instance().strategy_for(options.stack_mode);
+            strategy->set_evict_callbacks(&fiber::evict_trampoline, &fiber::begin_exchange_trampoline,
+                                          &fiber::end_exchange_trampoline);
+        }
+
+        if (stack.base != nullptr)
+        {
+            return true;
+        }
+
+        const stack_info acquired = strategy->acquire(this, options.stack_size);
+        if (acquired.base == nullptr)
+        {
+            return false;
+        }
+        stack = acquired;
+
+        if (saved_bytes != 0)
+        {
+            auto* const destination = static_cast<std::byte*>(stack.top) - saved_bytes;
+            std::memcpy(destination, saved_stack.data(), saved_bytes);
+            context = destination;
+            return true;
+        }
+
+        context = make_fcontext(stack.top, stack.size, &fiber::entry);
+        if (context == nullptr)
+        {
+            strategy->release(this);
+            stack = {};
+            return false;
+        }
+        return true;
+    }
+
+    void fiber::release_stack()
+    {
+        if (strategy != nullptr && stack.base != nullptr)
+        {
+            strategy->release(this);
+        }
+        stack = {};
+    }
+
+    void fiber::evict_from()
+    {
+        if (context != nullptr && stack.top != nullptr)
+        {
+            auto* const sp = static_cast<std::byte*>(context);
+            if (sp < stack.top)
+            {
+                const auto bytes = static_cast<std::size_t>(static_cast<std::byte*>(stack.top) - sp);
+                saved_stack.assign(sp, sp + bytes);
+                saved_bytes = bytes;
+            }
+        }
+        stack = {};
+    }
+
+    void fiber::evict_trampoline(void* owner)
+    {
+        static_cast<fiber*>(owner)->evict_from();
+    }
+
+    bool fiber::begin_exchange_trampoline(void* owner) noexcept
+    {
+        return !static_cast<fiber*>(owner)->stack_exchanging.exchange(true, std::memory_order_acq_rel);
+    }
+
+    void fiber::end_exchange_trampoline(void* owner) noexcept
+    {
+        static_cast<fiber*>(owner)->stack_exchanging.store(false, std::memory_order_release);
+    }
+
+    void fiber::save_stack()
+    {
+        if (stack.top == nullptr || context == nullptr)
+        {
+            return;
+        }
+
+        auto* const sp = static_cast<std::byte*>(context);
+        if (sp >= stack.top)
+        {
+            return;
+        }
+        const auto bytes = static_cast<std::size_t>(static_cast<std::byte*>(stack.top) - sp);
+        saved_stack.assign(sp, sp + bytes);
+        saved_bytes = bytes;
     }
 
     void fiber::run()

@@ -26,6 +26,7 @@ module log:core;
 
 import base;
 import log;
+import utility.clock;
 
 namespace utility {
   namespace detail
@@ -62,7 +63,10 @@ namespace utility {
     std::uint64_t thread_id{0};
 
     void write_to(std::FILE* target, std::array<char, 2048>& buffer) const {
-      const auto timestamp_ms = std::chrono::time_point_cast<std::chrono::milliseconds>(timestamp);
+      const auto whole = std::chrono::time_point_cast<std::chrono::seconds>(timestamp);
+      const auto milliseconds_part = static_cast<int>(
+        std::chrono::duration_cast<std::chrono::milliseconds>(timestamp - whole).count());
+      const std::string_view seconds = utility::seconds_text(timestamp);
       const auto level_name = to_string_view(level);
       const auto file_name = file_basename(location.file_name());
       const auto line_number = location.line();
@@ -72,8 +76,8 @@ namespace utility {
       if (name_view.empty()) {
         const auto result = std::format_to_n(
           buffer.data(), buffer.size(),
-          "[{:%Y-%m-%d %H:%M:%S}][{}][{:x}][{}:{} {}] {}\n",
-          timestamp_ms, level_name, thread_id, file_name, line_number, function_name, message);
+          "[{}.{:03d}][{}][{:x}][{}:{} {}] {}\n",
+          seconds, milliseconds_part, level_name, thread_id, file_name, line_number, function_name, message);
         const auto needed = static_cast<std::size_t>(result.size);
         if (needed <= buffer.size()) {
           std::fwrite(buffer.data(), 1, needed, target);
@@ -81,16 +85,16 @@ namespace utility {
         }
 
         const auto line = std::format(
-          "[{:%Y-%m-%d %H:%M:%S}][{}][{:x}][{}:{} {}] {}\n",
-          timestamp_ms, level_name, thread_id, file_name, line_number, function_name, message);
+          "[{}.{:03d}][{}][{:x}][{}:{} {}] {}\n",
+          seconds, milliseconds_part, level_name, thread_id, file_name, line_number, function_name, message);
         std::fwrite(line.data(), 1, line.size(), target);
         return;
       }
 
       const auto result = std::format_to_n(
         buffer.data(), buffer.size(),
-        "[{:%Y-%m-%d %H:%M:%S}][{}][{}][{:x}][{}:{} {}] {}\n",
-        timestamp_ms, level_name, name_view, thread_id, file_name, line_number, function_name, message);
+        "[{}.{:03d}][{}][{}][{:x}][{}:{} {}] {}\n",
+        seconds, milliseconds_part, level_name, name_view, thread_id, file_name, line_number, function_name, message);
       const auto needed = static_cast<std::size_t>(result.size);
       if (needed <= buffer.size()) {
         std::fwrite(buffer.data(), 1, needed, target);
@@ -98,8 +102,8 @@ namespace utility {
       }
 
       const auto line = std::format(
-        "[{:%Y-%m-%d %H:%M:%S}][{}][{}][{:x}][{}:{} {}] {}\n",
-        timestamp_ms, level_name, name_view, thread_id, file_name, line_number, function_name, message);
+        "[{}.{:03d}][{}][{}][{:x}][{}:{} {}] {}\n",
+        seconds, milliseconds_part, level_name, name_view, thread_id, file_name, line_number, function_name, message);
       std::fwrite(line.data(), 1, line.size(), target);
     }
   };
@@ -172,16 +176,18 @@ namespace utility {
     void work() {
       std::array<char, 2048> buffer{};
       for (;;) {
-        const auto item = [this] {
+        {
           std::unique_lock lock(log_mutex);
           cv.wait(lock, [this] { return !log_queue.empty(); });
-          auto front = std::move(log_queue.front());
-          log_queue.pop();
+          batch.swap(log_queue);
           writing = true;
-          return front;
-        }();
+        }
 
-        item.second.write_to(item.first, buffer);
+        while (!batch.empty()) {
+          const auto& item = batch.front();
+          item.second.write_to(item.first, buffer);
+          batch.pop();
+        }
 
         const bool abort_now = [this] {
           const std::lock_guard guard(log_mutex);
@@ -201,6 +207,7 @@ namespace utility {
     std::condition_variable cv;
     std::condition_variable idle_cv;
     std::queue<std::pair<std::FILE*, log_record>> log_queue;
+    std::queue<std::pair<std::FILE*, log_record>> batch;
     std::atomic<log_level> min_level{log_level::debug};
     std::atomic<std::size_t> dropped{0};
     bool writing = false;
@@ -251,8 +258,8 @@ namespace utility {
 
     ~local_log_info() {
       std::FILE* const target = thread_info::get_local().target();
-      (void)log_writer::instance().flush();
       if (target != stdout) {
+        (void)log_writer::instance().flush();
         std::fclose(target);
       } else {
         std::fflush(stdout);

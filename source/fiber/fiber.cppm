@@ -16,6 +16,7 @@ module;
 
 export module fiber;
 
+export import fiber.stack;
 import log;
 
 namespace pants
@@ -46,12 +47,12 @@ namespace pants
             external_reason,
         };
 
-        static constexpr std::size_t default_stack_size = 128 * 1024;
+        static constexpr std::size_t default_stack_size = 32 * 1024;
 
         struct option
         {
             std::size_t stack_size = default_stack_size;
-            bool guard_page = true;
+            pants::stack_mode stack_mode = pants::stack_mode::shared;
         };
 
         explicit fiber(callback func) noexcept;
@@ -71,7 +72,6 @@ namespace pants
         [[nodiscard]] state get_state() const noexcept;
         [[nodiscard]] wait_reason get_wait_reason() const noexcept;
         [[nodiscard]] std::size_t stack_size() const noexcept;
-        [[nodiscard]] bool guard_page() const noexcept;
         [[nodiscard]] std::shared_ptr<std::string> get_error() const noexcept;
         [[nodiscard]] static fiber* current() noexcept;
         [[nodiscard]] static shared shared_current() noexcept;
@@ -123,13 +123,23 @@ namespace pants
         bool initialize_context(callback func);
         static fcontext_transfer_t entry(fcontext_transfer_t transferred);
         void run();
+        [[nodiscard]] bool prepare_stack();
+        void release_stack();
+        void evict_from();
+        static void evict_trampoline(void* owner);
+        static bool begin_exchange_trampoline(void* owner) noexcept;
+        static void end_exchange_trampoline(void* owner) noexcept;
+        void save_stack();
         void yield(state target, wait_reason why);
         void save_logic_error(const char* what) noexcept;
 
         void* context{nullptr};
         void* caller{nullptr};
-        void* stack_base{nullptr};
-        std::size_t stack_bytes{0};
+        std::atomic<bool> stack_exchanging{false};
+        stack_strategy* strategy{nullptr};
+        stack_info stack{};
+        std::vector<std::byte> saved_stack;
+        std::size_t saved_bytes{0};
         callback func;
         std::uint64_t ident{0};
         option options;

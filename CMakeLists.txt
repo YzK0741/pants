@@ -14,6 +14,7 @@ endif ()
 add_compile_options(
         $<$<COMPILE_LANGUAGE:CXX>:-fno-exceptions>
         $<$<COMPILE_LANGUAGE:CXX>:-fno-rtti>
+        $<$<COMPILE_LANGUAGE:CXX>:-fomit-frame-pointer>
 )
 
 
@@ -32,9 +33,11 @@ if (NOT WIN32)
             FILE_SET CXX_MODULES
             FILES
             source/fiber/fiber.cppm
+            source/fiber/stack_resource.cppm
     )
     target_sources(fiber PRIVATE
             source/fiber/fiber.cpp
+            source/fiber/stack_resource.cpp
             third_party/fcontext/asm/make_x86_64_sysv_elf_gas.S
             third_party/fcontext/asm/jump_x86_64_sysv_elf_gas.S
     )
@@ -117,6 +120,18 @@ if (NOT WIN32)
     target_link_libraries(hook PUBLIC iomanager fd_manager PRIVATE fiber timer log ${CMAKE_DL_LIBS})
 endif ()
 
+if (NOT WIN32)
+    add_library(utility_clock)
+    target_sources(utility_clock PUBLIC
+            FILE_SET CXX_MODULES
+            FILES
+            source/utility/clock/clock.cppm
+    )
+    target_sources(utility_clock PRIVATE
+            source/utility/clock/clock.cpp
+    )
+endif ()
+
 add_library(log)
 target_sources(log PUBLIC
         FILE_SET CXX_MODULES
@@ -124,7 +139,7 @@ target_sources(log PUBLIC
         source/log/log.cppm
         source/log/log_core.cppm
 )
-target_link_libraries(log PUBLIC base)
+target_link_libraries(log PUBLIC base PRIVATE utility_clock)
 
 add_library(utility)
 target_sources(utility PUBLIC
@@ -142,9 +157,17 @@ target_sources(utility PRIVATE
         source/utility/diagnostics/diagnostics.cpp
         source/utility/thread/thread.cpp
 )
-target_link_libraries(utility PUBLIC base log)
+target_link_libraries(utility PUBLIC base log utility_clock)
 
 target_link_libraries(pants PUBLIC utility)
+
+if (NOT WIN32)
+    add_executable(bench_log bench/bench_log.cpp)
+    target_link_libraries(bench_log PRIVATE log)
+
+    add_executable(bench_stack bench/bench_stack.cpp)
+    target_link_libraries(bench_stack PRIVATE fiber)
+endif ()
 
 if (NOT WIN32)
     add_library(memory)
