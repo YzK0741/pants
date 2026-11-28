@@ -17,12 +17,10 @@ import base;
 namespace {
 
 [[noreturn]] void panic_oom() noexcept {
-  // 不格式化、不分配：走到这里通常就是因为内存已经没了
   utility::panic("oom! fast panic");
 }
 
 [[nodiscard]] void* allocate(std::size_t size, std::size_t alignment) noexcept {
-  // C++ 允许 new(0)：标准要求返回非空指针
   const std::size_t bytes = size != 0 ? size : 1;
   if (alignment <= alignof(std::max_align_t)) {
     return mi_malloc(bytes);

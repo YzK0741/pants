@@ -58,66 +58,66 @@ std::expected<void, log_errc> submit_message(
   std::string&& message,
   std::source_location location);
 
-template <typename... Args>
+template <typename... arg_types>
 std::expected<void, log_errc> submit_log(
   log_level level,
   std::source_location location,
-  std::format_string<Args...> message,
-  Args&&... args) {
+  std::format_string<arg_types...> message,
+  arg_types&&... args) {
   if (!should_log(level)) {
     return {};
   }
 
   return submit_message(
-      level, std::format(message, std::forward<Args>(args)...), location);
+      level, std::format(message, std::forward<arg_types>(args)...), location);
 }
 
 } // namespace detail
 
 export namespace utility {
 
-template <typename... Args>
+template <typename... arg_types>
 std::expected<void, log_errc> log_debug(
   [[maybe_unused]] std::source_location location,
-  [[maybe_unused]] std::format_string<Args...> message,
-  [[maybe_unused]] Args&&... args) {
+  [[maybe_unused]] std::format_string<arg_types...> message,
+  [[maybe_unused]] arg_types&&... args) {
   if constexpr (debug_enabled) {
-    return detail::submit_log(log_level::debug, location, message, std::forward<Args>(args)...);
+    return detail::submit_log(log_level::debug, location, message, std::forward<arg_types>(args)...);
   }
   return {};
 }
 
-template <typename... Args>
+template <typename... arg_types>
 std::expected<void, log_errc> log_info(
   std::source_location location,
-  std::format_string<Args...> message,
-  Args&&... args) {
-  return detail::submit_log(log_level::info, location, message, std::forward<Args>(args)...);
+  std::format_string<arg_types...> message,
+  arg_types&&... args) {
+  return detail::submit_log(log_level::info, location, message, std::forward<arg_types>(args)...);
 }
 
-template <typename... Args>
+template <typename... arg_types>
 std::expected<void, log_errc> log_warning(
   std::source_location location,
-  std::format_string<Args...> message,
-  Args&&... args) {
-  return detail::submit_log(log_level::warning, location, message, std::forward<Args>(args)...);
+  std::format_string<arg_types...> message,
+  arg_types&&... args) {
+  return detail::submit_log(log_level::warning, location, message, std::forward<arg_types>(args)...);
 }
 
-template <typename... Args>
+template <typename... arg_types>
 std::expected<void, log_errc> log_error(
   std::source_location location,
-  std::format_string<Args...> message,
-  Args&&... args) {
-  return detail::submit_log(log_level::error, location, message, std::forward<Args>(args)...);
+  std::format_string<arg_types...> message,
+  arg_types&&... args) {
+  return detail::submit_log(log_level::error, location, message, std::forward<arg_types>(args)...);
 }
 
-template <typename... Args>
+template <typename... arg_types>
 std::expected<void, log_errc> log_fatal(
   std::source_location location,
-  std::format_string<Args...> message,
-  Args&&... args) {
+  std::format_string<arg_types...> message,
+  arg_types&&... args) {
   auto result = detail::submit_message(
-      log_level::fatal, std::format(message, std::forward<Args>(args)...), location);
+      log_level::fatal, std::format(message, std::forward<arg_types>(args)...), location);
   if (!result) {
     return result;
   }

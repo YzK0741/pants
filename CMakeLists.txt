@@ -51,6 +51,72 @@ target_sources(scheduler PRIVATE
         source/scheduler/scheduler.cpp
 )
 target_link_libraries(scheduler PUBLIC fiber PRIVATE base log)
+add_library(timer)
+target_sources(timer PUBLIC
+        FILE_SET CXX_MODULES
+        FILES
+        source/timer/timer.cppm
+)
+target_sources(timer PRIVATE
+        source/timer/timer.cpp
+)
+target_link_libraries(timer PRIVATE log)
+
+add_library(iomanager)
+target_sources(iomanager PUBLIC
+        FILE_SET CXX_MODULES
+        FILES
+        source/iomanager/iomanager.cppm
+)
+target_sources(iomanager PRIVATE
+        source/iomanager/iomanager.cpp
+)
+target_link_libraries(iomanager PUBLIC scheduler timer PRIVATE fiber log)
+
+if (NOT WIN32)
+    add_library(config)
+    target_sources(config PUBLIC
+            FILE_SET CXX_MODULES
+            FILES
+            source/config/config.cppm
+    )
+    target_sources(config PRIVATE
+            source/config/config.cpp
+    )
+    target_include_directories(config PRIVATE third_party/toml)
+    target_link_libraries(config PRIVATE log)
+endif ()
+
+add_library(mutex)
+target_sources(mutex PUBLIC
+        FILE_SET CXX_MODULES
+        FILES
+        source/mutex/mutex.cppm
+)
+
+add_library(fd_manager)
+target_sources(fd_manager PUBLIC
+        FILE_SET CXX_MODULES
+        FILES
+        source/fd_manager/fd_manager.cppm
+)
+target_sources(fd_manager PRIVATE
+        source/fd_manager/fd_manager.cpp
+)
+
+if (NOT WIN32)
+    add_library(hook)
+    target_sources(hook PUBLIC
+            FILE_SET CXX_MODULES
+            FILES
+            source/hook/hook.cppm
+    )
+    target_sources(hook PRIVATE
+            source/hook/hook.cpp
+    )
+    target_link_libraries(hook PUBLIC iomanager fd_manager PRIVATE fiber timer log ${CMAKE_DL_LIBS})
+endif ()
+
 add_library(log)
 target_sources(log PUBLIC
         FILE_SET CXX_MODULES
@@ -65,6 +131,16 @@ target_sources(utility PUBLIC
         FILE_SET CXX_MODULES
         FILES
         source/utility/utility.cppm
+        source/utility/text/text.cppm
+        source/utility/filesystem/filesystem.cppm
+        source/utility/diagnostics/diagnostics.cppm
+        source/utility/thread/thread.cppm
+)
+target_sources(utility PRIVATE
+        source/utility/text/text.cpp
+        source/utility/filesystem/filesystem.cpp
+        source/utility/diagnostics/diagnostics.cpp
+        source/utility/thread/thread.cpp
 )
 target_link_libraries(utility PUBLIC base log)
 

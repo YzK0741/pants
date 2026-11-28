@@ -20,12 +20,12 @@ import log;
 
 namespace pants
 {
-    export class fiber : std::enable_shared_from_this<fiber>
+    export class fiber : public std::enable_shared_from_this<fiber>
     {
         public:
 
         using shared = std::shared_ptr<fiber>;
-        using callback = std::function<void()>;
+        using callback = std::move_only_function<void()>;
 
         enum class state : std::uint8_t
         {

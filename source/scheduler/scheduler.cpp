@@ -115,6 +115,23 @@ namespace pants
         }
     }
 
+    void scheduler::add_task(callback entry, thread_id id)
+    {
+        bool need_tickle = false;
+        {
+            std::lock_guard lock(mutex);
+            need_tickle = schedule_no_lock(task{std::move(entry), id});
+        }
+        if (need_tickle)
+        {
+            tickle();
+        }
+    }
+
+    void scheduler::on_thread_enter()
+    {
+    }
+
     void scheduler::start()
     {
         std::unique_lock lock(mutex);
@@ -249,6 +266,7 @@ namespace pants
         fiber* const previous_scheduler_fiber = current_scheduler_fiber;
 
         set_this();
+        on_thread_enter();
         current_scheduler_fiber = fiber::current();
         const thread_id mine = utility::thread_info::get_local().id();
         if (mine != root_thread_id)

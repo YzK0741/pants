@@ -34,7 +34,7 @@ export namespace pants
 
         using shared = std::shared_ptr<scheduler>;
         using thread_id = std::uint64_t;
-        using callback = std::function<void()>;
+        using callback = std::move_only_function<void()>;
 
         static constexpr thread_id any_thread = 0;
 
@@ -59,6 +59,7 @@ export namespace pants
         void stop();
 
         void add_task(fiber::shared task, thread_id id = any_thread);
+        void add_task(callback entry, thread_id id = any_thread);
 
         template <std::ranges::input_range range>
         requires std::convertible_to<std::ranges::range_reference_t<range>, fiber::shared>
@@ -94,6 +95,7 @@ export namespace pants
 
         virtual void tickle();
         [[nodiscard]] virtual bool can_stop();
+        virtual void on_thread_enter();
         virtual void idle();
 
         void run();

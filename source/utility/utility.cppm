@@ -5,3 +5,7 @@ export module utility;
 
 export import base;
 export import log;
+export import utility.text;
+export import utility.filesystem;
+export import utility.diagnostics;
+export import utility.thread;

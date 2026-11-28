@@ -3,11 +3,10 @@
 
 #include <cstddef>
 
-// 与 third_party/fcontext/asm/*.S 约定的 ABI（来自 Boost.Context 的 fcontext）。
 struct fcontext_transfer_t
 {
-    void* fctx{nullptr};
-    void* data{nullptr};
+    void* fctx;
+    void* data;
 };
 
 extern "C"
