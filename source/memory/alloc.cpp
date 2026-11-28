@@ -1,9 +1,6 @@
 //
 // Created by 23530 on 2026/11/27.
 //
-// 全局 operator new / delete 替换为 mimalloc。
-// 这是一个普通实现单元（不属于任何模块），因为替换全局分配函数没有模块形式。
-//
 
 #include <cstddef>
 #include <cstdio>

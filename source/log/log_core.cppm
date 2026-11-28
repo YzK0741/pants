@@ -144,7 +144,6 @@ namespace utility {
         }
 
         const bool fatal = record.level == log_level::fatal;
-        // fatal 记录必须入队，允许临时突破容量上限一条
         if (!fatal && log_queue.size() >= log_queue_capacity) {
           dropped.fetch_add(1, std::memory_order_relaxed);
           return std::unexpected(log_errc::queue_full);

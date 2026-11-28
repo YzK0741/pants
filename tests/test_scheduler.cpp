@@ -55,8 +55,7 @@ int main() {
   sched.stop();
   check(switched.load() == 1, "scheduler_switcher should not disturb the current scheduler");
 
-  // 让出一个 fiber 后还能被重新调度
-  std::atomic<int> yields{0};
+    std::atomic<int> yields{0};
   sched.go([&yields] {
     for (int index = 0; index < 5; ++index) {
       yields.fetch_add(1, std::memory_order_relaxed);

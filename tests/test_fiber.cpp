@@ -44,8 +44,7 @@ int main() {
   check(!worker->wake(), "wake on terminated fiber should fail");
   check(worker->get_error() == nullptr, "no error expected on a clean run");
 
-  // 误用：对已结束的 fiber 再 resume 一次，应记录逻辑错误且不改状态（对齐 pans）
-  (void)worker->resume();
+    (void)worker->resume();
   check(worker->get_state() == pants::fiber::state::terminated, "misuse should keep the terminated state");
   const auto error = worker->get_error();
   check(error != nullptr && !error->empty(), "misuse should be saved in get_error()");

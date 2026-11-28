@@ -35,7 +35,6 @@ public:
     return thread_name != nullptr ? std::string_view(*thread_name) : std::string_view{};
   }
 
-  // 共享所有权：日志记录持有它，改名不会让已入队的记录悬垂
   [[nodiscard]] std::shared_ptr<const std::string> name_holder() const noexcept {
     return thread_name;
   }
