@@ -62,7 +62,6 @@ namespace utility {
     std::uint64_t thread_id{0};
 
     void write_to(std::FILE* target, std::array<char, 2048>& buffer) const {
-      // 常见日志在栈缓冲区里直接格式化，超长时再退回堆上的 std::string
       const auto timestamp_ms = std::chrono::time_point_cast<std::chrono::milliseconds>(timestamp);
       const auto level_name = to_string_view(level);
       const auto file_name = file_basename(location.file_name());

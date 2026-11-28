@@ -8,21 +8,13 @@ add_executable(pants main.cpp)
 
 
 if (NOT WIN32)
-    include(FetchContent)
-
-    set(MI_BUILD_SHARED OFF CACHE BOOL "" FORCE)
-    set(MI_BUILD_OBJECT OFF CACHE BOOL "" FORCE)
-    set(MI_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-    set(MI_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-    set(MI_OVERRIDE OFF CACHE BOOL "" FORCE)
-
-    FetchContent_Declare(mimalloc
-            GIT_REPOSITORY https://github.com/microsoft/mimalloc.git
-            GIT_TAG v3.7.1
-            GIT_SHALLOW TRUE
-    )
-    FetchContent_MakeAvailable(mimalloc)
+    add_subdirectory(third_party/mimalloc)
 endif ()
+
+add_compile_options(
+        $<$<COMPILE_LANGUAGE:CXX>:-fno-exceptions>
+        $<$<COMPILE_LANGUAGE:CXX>:-fno-rtti>
+)
 
 
 add_library(base)
@@ -32,6 +24,33 @@ target_sources(base PUBLIC
         source/base/base.cppm
 )
 
+if (NOT WIN32)
+    enable_language(ASM)
+
+    add_library(fiber)
+    target_sources(fiber PUBLIC
+            FILE_SET CXX_MODULES
+            FILES
+            source/fiber/fiber.cppm
+    )
+    target_sources(fiber PRIVATE
+            source/fiber/fiber.cpp
+            third_party/fcontext/asm/make_x86_64_sysv_elf_gas.S
+            third_party/fcontext/asm/jump_x86_64_sysv_elf_gas.S
+    )
+    target_link_libraries(fiber PRIVATE log)
+endif ()
+
+add_library(scheduler)
+target_sources(scheduler PUBLIC
+        FILE_SET CXX_MODULES
+        FILES
+        source/scheduler/scheduler.cppm
+)
+target_sources(scheduler PRIVATE
+        source/scheduler/scheduler.cpp
+)
+target_link_libraries(scheduler PUBLIC fiber PRIVATE base log)
 add_library(log)
 target_sources(log PUBLIC
         FILE_SET CXX_MODULES
@@ -56,7 +75,7 @@ if (NOT WIN32)
     target_sources(memory PRIVATE
             source/memory/alloc.cpp
     )
-    target_link_libraries(memory PRIVATE mimalloc-static)
+    target_link_libraries(memory PRIVATE mimalloc_vendored)
     target_link_libraries(memory PUBLIC base)
     target_link_libraries(pants PRIVATE memory)
 endif ()
